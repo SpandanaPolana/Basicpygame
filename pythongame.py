@@ -1,7 +1,6 @@
 import pygame
 import sys
 import random
-import math
 import matplotlib.pyplot as plt
 import os
 import threading
@@ -20,15 +19,15 @@ BLUE = (135, 206, 235)
 RED  = (255, 0, 0)
 
 # Load the cloud image
-cloud_image = pygame.image.load('cloud.png')  # Ensure this file is in the same directory (c:users/spand)
+cloud_image = pygame.image.load('Resources/cloud.png')  # Ensure this file is in the same directory (c:users/spand)
 cloud_image = pygame.transform.scale(cloud_image, (150, 80))  # Scale to desired size
 
 # load player image
-player1_image = pygame.image.load('player1.png')
+player1_image = pygame.image.load('Resources/player1.png')
 player1_image = pygame.transform.scale(player1_image,(120,120))
 
 # Load the Meteor image
-meteor_image = pygame.image.load('meteor.png')  # Ensure this file is in the same directory (c:users/spand)
+meteor_image = pygame.image.load('Resources/meteor.png')  # Ensure this file is in the same directory (c:users/spand)
 meteor_image = pygame.transform.scale(meteor_image, (150, 150))  # Scale to desired size
 
 player_pos = [200,700]
@@ -84,12 +83,12 @@ def is_collision(player_rect,meteor_rect):
 # Initial data for the graph
 score = 0
 data = [0,5,10,15,20]
-filename = "graph.png"
+filename = "Resources/graph.png"
 font = pygame.font.Font(None,36)    # None for default family font, and 36 is font size
 
 
 # Function to generate the graph
-def generate_graph(data,filename = "graph.png",figsize = (3,3),dpi = 100):
+def generate_graph(data,filename = "Resources/graph.png",figsize = (3,3),dpi = 100):
     x_values = range(1, 6)   # Set the x-axis to a fixed range 1 to 5
     # Update Y-axis based on the current range in data
     max_y = max(data)
@@ -113,6 +112,9 @@ def generate_graph(data,filename = "graph.png",figsize = (3,3),dpi = 100):
 generate_graph(data, filename)
 graph_image = pygame.image.load(filename)
 
+# Lock for thread-safe image updates
+graph_lock = threading.Lock()
+
 # Event flag for graph updates
 graph_updated_event = threading.Event()
 
@@ -120,9 +122,10 @@ graph_updated_event = threading.Event()
 def background_graph_update():
     global graph_image
     while True:
-        graph_updated_event.wait()   # Wait for score update signal
+        graph_updated_event.wait(0.1)   # Wait for score update signal
         generate_graph(data, filename)
-        graph_image = pygame.image.load(filename)
+        with graph_lock:  # Ensure that only one thread updates the graph image at a time
+            graph_image = pygame.image.load(filename)
         graph_updated_event.clear()  # Reset the flag after update
 
 # Start the background graph update thread
@@ -130,13 +133,9 @@ graph_thread = threading.Thread(target=background_graph_update, daemon=True)
 graph_thread.start()
 
 
-
-
-
-
 # Main game loop
 running = True
-
+# clock = pygame.time.Clock()
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -213,17 +212,21 @@ while running:
             data = data[1:] + [score]
 
             graph_updated_event.set()  # Trigger graph update
-            '''data.append(score)  # Update data with latest score
-            data = data[-5:]    # Keep only last 5 scores'''
             
 
     # Display the score and graph on the screen  
     score_text = font.render(f'score:{score}',True,RED)     # font.render(...) creates a text image showing the current score
     screen.blit(score_text,(1600,150))                      # screen.blit(...) draws this text on the screen at specific position (x,y)
-    screen.blit(graph_image,(1500,200))
+    
+    # Ensure thread-safe access to graph_image
+    with graph_lock:
+        screen.blit(graph_image, (1500, 200))
+    
 
     # Update the display
     pygame.display.flip()
+
+
 
 # Quit Pygame
 pygame.quit()
