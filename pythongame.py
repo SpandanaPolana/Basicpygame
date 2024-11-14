@@ -1,9 +1,12 @@
+import matplotlib
+matplotlib.use('Agg')  # Use a non-GUI backend
+import matplotlib.pyplot as plt
 import pygame
 import sys
 import random
-import matplotlib.pyplot as plt
-import os
 import threading
+import io
+import time
 
 # Initialize Pygame
 pygame.init()
@@ -23,15 +26,15 @@ cloud_image = pygame.image.load('Resources/cloud.png')  # Ensure this file is in
 cloud_image = pygame.transform.scale(cloud_image, (150, 80))  # Scale to desired size
 
 # load player image
-player1_image = pygame.image.load('Resources/player1.png')
-player1_image = pygame.transform.scale(player1_image,(120,120))
+player_image = pygame.image.load('Resources/player.png')
+player_image = pygame.transform.scale(player_image,(120,120))
 
 # Load the Meteor image
 meteor_image = pygame.image.load('Resources/meteor.png')  # Ensure this file is in the same directory (c:users/spand)
 meteor_image = pygame.transform.scale(meteor_image, (150, 150))  # Scale to desired size
 
 player_pos = [200,700]
-player_speed = 3      
+player_speed = 5     
 player_direction = "right" 
 
 
@@ -83,34 +86,38 @@ def is_collision(player_rect,meteor_rect):
 # Initial data for the graph
 score = 0
 data = [0,5,10,15,20]
-filename = "Resources/graph.png"
 font = pygame.font.Font(None,36)    # None for default family font, and 36 is font size
 
 
 # Function to generate the graph
-def generate_graph(data,filename = "Resources/graph.png",figsize = (3,3),dpi = 100):
+def generate_graph(data):
     x_values = range(1, 6)   # Set the x-axis to a fixed range 1 to 5
     # Update Y-axis based on the current range in data
     max_y = max(data)
     min_y = max(0,max_y - 20)
     y_ticks = [min_y + (i * 5) for i in range(5)]   # Generate y-tick values with 5 values, starting from min_score up to max_score or higher
     # Create figure and axis with dynamic Y limits
-    plt.figure(figsize = figsize, dpi = dpi)
+    plt.figure(figsize = (3, 3), dpi = 100)
     plt.plot(x_values,data,color = 'blue',marker = 'o')
     plt.title("Score Graph")
-    plt.xlabel("X-axis")
+    plt.xlabel("Events")
     plt.ylabel("Score")
     plt.xticks(x_values)  # This forces matplotlib explicitly to show each tick from 1 to 5
     plt.yticks(y_ticks)
     plt.ylim(min_y,max_y)  # Adjust Y-axis to the range of data
     plt.grid(True)
     plt.tight_layout()  # to make sure layout fits within figure size
-    plt.savefig(filename,transparent = True)
+
+    # Save to an in-memory buffer instead of a file
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format = 'png', transparent = True)
+    buffer.seek(0)
     plt.close()
+    return buffer
 
 # Generate the initial graph and load it into Pygame
-generate_graph(data, filename)
-graph_image = pygame.image.load(filename)
+graph_buffer = generate_graph(data)
+graph_image = pygame.image.load(graph_buffer, 'Resources/graph.png')
 
 # Lock for thread-safe image updates
 graph_lock = threading.Lock()
@@ -118,14 +125,14 @@ graph_lock = threading.Lock()
 # Event flag for graph updates
 graph_updated_event = threading.Event()
 
-# Background thread to update the graph
+# Background thread to update the graph with load image from buffer
 def background_graph_update():
     global graph_image
     while True:
-        graph_updated_event.wait(0.1)   # Wait for score update signal
-        generate_graph(data, filename)
+        time.sleep(1)
+        new_buffer = generate_graph(data)
         with graph_lock:  # Ensure that only one thread updates the graph image at a time
-            graph_image = pygame.image.load(filename)
+            graph_image = pygame.image.load(new_buffer, "Resources/graph.png")
         graph_updated_event.clear()  # Reset the flag after update
 
 # Start the background graph update thread
@@ -133,10 +140,15 @@ graph_thread = threading.Thread(target=background_graph_update, daemon=True)
 graph_thread.start()
 
 
+
+
 # Main game loop
 running = True
-# clock = pygame.time.Clock()
+clock = pygame.time.Clock()
+
 while running:
+    dt = clock.get_time() / 1000  # Adjust object movement using delta time (dt) for consistent speed# to get the time since the last frame, which helps to make the game movement time-dependent instead of frame-dependent
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -162,15 +174,15 @@ while running:
         
     # Limit the player x and y-axis position to stay within the screen boundaries
     player_pos[0] = max(180,min(player_pos[0],1600))
-    player_pos[1] = max(120,min(player_pos[1],950))  # y-coordinate #screen.get_height()-player1_image.get_height() = 850, for aasumption we take it as 850
+    player_pos[1] = max(120,min(player_pos[1],850))  # y-coordinate #screen.get_height()-player1_image.get_height() = 850, for aasumption we take it as 850
 
-    player_rect = pygame.Rect(player_pos[0],player_pos[1],player1_image.get_width(),player1_image.get_height())
+    player_rect = pygame.Rect(player_pos[0],player_pos[1],player_image.get_width(),player_image.get_height())
      
     # Boundary check and direction change in x-axis
     if player_direction == "right":
-        current_image = player1_image
+        current_image = player_image
     elif player_direction == 'left':
-        current_image = pygame.transform.flip(player1_image, True, False)  # Flip horizontally for left
+        current_image = pygame.transform.flip(player_image, True, False)  # Flip horizontally for left
     
     
     # Screen background  
@@ -180,7 +192,7 @@ while running:
     # Draw and Continuously move the 6 clouds to the left
     for cloud in clouds:
         cloud.shape(screen)
-        cloud.moveLeft(speed = 2)
+        cloud.moveLeft(speed = 3)
 
         # Reset cloud position if it moves out of the screen
         if cloud.x < 0:
@@ -190,15 +202,15 @@ while running:
     # Draw and Continuously move the 6 meteorss to the left
     for meteor in meteors:
         meteor.shape(screen)
-        meteor.moveLeft(speed = 1)
+        meteor.moveLeft(speed = 3)
 
         # Reset meteor position if it moves out of the screen
         if meteor.s < 0:
             meteor.s = 1900     # Move meteor back to the right side of the screen
-            meteor.v = random.randrange(100, 900)
+            meteor.v = random.randrange(100, 800)
             meteor.has_passed = False     # Reset has_passed flag for new meteor position
 
-        meteor_rect = pygame.Rect(meteor.s,meteor.v,120,120)
+        meteor_rect = pygame.Rect(meteor.s,meteor.v,130,130)
 
         # Check for collision with the player
         if is_collision(player_rect,meteor_rect):
@@ -208,30 +220,21 @@ while running:
         if meteor.s < player_pos[0] and not meteor.has_passed:
             score += 5  # Award points for each meteor avoided
             meteor.has_passed = True  # Mark meteor as passed to prevent repeated scoring
-            # Update data to keep the rolling 5 most recent score increments
-            data = data[1:] + [score]
-
+            data = data[1:] + [score]  # Update data to keep the rolling 5 most recent score increments
             graph_updated_event.set()  # Trigger graph update
             
 
     # Display the score and graph on the screen  
     score_text = font.render(f'score:{score}',True,RED)     # font.render(...) creates a text image showing the current score
-    screen.blit(score_text,(1600,150))                      # screen.blit(...) draws this text on the screen at specific position (x,y)
-    
-    # Ensure thread-safe access to graph_image
-    with graph_lock:
-        screen.blit(graph_image, (1500, 200))
+    screen.blit(score_text,(1500,150))                      # screen.blit(...) draws this text on the screen at specific position (x,y)
+    screen.blit(graph_image, (1400, 200))
     
 
     # Update the display
     pygame.display.flip()
-
+    clock.tick(60)
 
 
 # Quit Pygame
 pygame.quit()
 sys.exit()
-
-# Remove the graph file after quitting
-if os.path.exists(filename):
-    os.remove(filename)
